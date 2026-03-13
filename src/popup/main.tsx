@@ -10,7 +10,8 @@ import './styles.css';
 const fallbackState: PopupState = {
   tabId: null,
   isSupported: false,
-  session: null
+  session: null,
+  library: []
 };
 
 function App() {
@@ -81,6 +82,16 @@ function App() {
     );
   }
 
+  async function toggleAutoSaveLibrary(enabled: boolean) {
+    if (!state.tabId) return;
+    setState(
+      await sendRuntimeMessage<PopupState>({
+        type: 'SET_AUTO_SAVE_LIBRARY',
+        payload: { tabId: state.tabId, enabled }
+      })
+    );
+  }
+
   async function clearCaptions() {
     if (!state.tabId) return;
     setState(
@@ -119,9 +130,12 @@ function App() {
       onStart={() => void startDetection()}
       onStop={() => void stopDetection()}
       onToggleAutoDetect={(enabled) => void toggleAutoDetect(enabled)}
+      onToggleAutoSaveLibrary={(enabled) => void toggleAutoSaveLibrary(enabled)}
       onClearCaptions={() => void clearCaptions()}
       onCopyAll={() => void copyAllCaptions()}
       onDownload={(format) => void sendDownload(format)}
+      onDownloadLibrary={(pageUrl, format) => void sendLibraryDownload(pageUrl, format)}
+      onDeleteLibraryEntry={(pageUrl) => void deleteLibraryEntry(pageUrl)}
       onRefresh={() => void refresh()}
     />
   );
@@ -131,6 +145,22 @@ function App() {
     const next = await sendRuntimeMessage<PopupState>({
       type: 'DOWNLOAD_CAPTIONS',
       payload: { tabId: state.tabId, format }
+    });
+    setState(next);
+  }
+
+  async function sendLibraryDownload(pageUrl: string, format: DownloadFormat) {
+    const next = await sendRuntimeMessage<PopupState>({
+      type: 'DOWNLOAD_LIBRARY_CAPTIONS',
+      payload: { pageUrl, format }
+    });
+    setState(next);
+  }
+
+  async function deleteLibraryEntry(pageUrl: string) {
+    const next = await sendRuntimeMessage<PopupState>({
+      type: 'DELETE_LIBRARY_CAPTIONS',
+      payload: { pageUrl }
     });
     setState(next);
   }

@@ -6,6 +6,7 @@ describe('session store', () => {
     const session = createEmptySession(3);
 
     expect(session.autoDetect).toBe(true);
+    expect(session.autoSaveLibrary).toBe(true);
     expect(session.detectionEnabled).toBe(false);
   });
 
@@ -69,5 +70,60 @@ world`
 
     expect(failed.lastError).toBe('Debugger attach failed');
     expect(restarted.lastError).toBeNull();
+  });
+
+  it('hydrates saved captions for the same page url and keeps later live merges sorted', () => {
+    const session = reduceSessionMessage(createEmptySession(3), {
+      type: 'SET_PAGE_CONTEXT',
+      payload: { pageUrl: 'https://example.com/watch/1', pageTitle: 'Example' }
+    });
+
+    const hydrated = reduceSessionMessage(session, {
+      type: 'HYDRATE_CAPTIONS_FROM_LIBRARY',
+      payload: {
+        pageUrl: 'https://example.com/watch/1',
+        captions: {
+          cues: [{ id: '2-3-world', start: 2, end: 3, text: 'world' }],
+          cueMap: { '2-3-world': true },
+          previewText: 'world',
+          lastUpdatedAt: 1
+        }
+      }
+    });
+
+    const collected = reduceSessionMessage(hydrated, {
+      type: 'SEGMENT_CAPTURED',
+      payload: {
+        url: 'https://example.com/subs/seg-2.vtt',
+        text: `WEBVTT
+
+00:00:01.000 --> 00:00:02.000
+hello`
+      }
+    });
+
+    expect(collected.captions.cues.map((cue) => cue.text)).toEqual(['hello', 'world']);
+    expect(collected.hydratedLibraryUrl).toBe('https://example.com/watch/1');
+  });
+
+  it('resets the live buffer when page url changes', () => {
+    const collected = reduceSessionMessage(createEmptySession(3), {
+      type: 'SEGMENT_CAPTURED',
+      payload: {
+        url: 'https://example.com/subs/seg-1.vtt',
+        text: `WEBVTT
+
+00:00:01.000 --> 00:00:02.000
+hello`
+      }
+    });
+
+    const changed = reduceSessionMessage(collected, {
+      type: 'SET_PAGE_CONTEXT',
+      payload: { pageUrl: 'https://example.com/watch/2', pageTitle: 'Changed' }
+    });
+
+    expect(changed.pageUrl).toBe('https://example.com/watch/2');
+    expect(changed.captions.cues).toEqual([]);
   });
 });

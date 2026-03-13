@@ -1,24 +1,43 @@
+import { mergeCaptionLibraryEntry, sortCaptionLibraryEntries } from './lib/caption-library';
 import { cuesToTxt, cuesToVtt } from './lib/subtitles';
 import { decodeDebuggerBody } from './lib/debugger-body';
 import { shouldCaptureResponseBody } from './lib/debugger-network';
 import { createDownloadDataUrl } from './lib/download-url';
 import { createEmptySession, reduceSessionMessage } from './lib/session-store';
-import type { PopupState, RuntimeMessage, TabSession } from './lib/types';
+import type { CaptionLibraryMap, PopupState, RuntimeMessage, TabSession } from './lib/types';
 
 const sessions = new Map<number, TabSession>();
 const debuggerTargets = new Set<number>();
 const requestMap = new Map<string, { tabId: number; url: string; contentType?: string }>();
 const AUTO_DETECT_STORAGE_KEY = 'autoDetectEnabled';
+const AUTO_SAVE_LIBRARY_STORAGE_KEY = 'autoSaveLibraryEnabled';
+const CAPTION_LIBRARY_STORAGE_KEY = 'captionLibrary';
 let autoDetectDefault = true;
+let autoSaveLibraryDefault = true;
 let settingsLoadPromise: Promise<void> | null = null;
+let libraryLoadPromise: Promise<void> | null = null;
+let captionLibrary: CaptionLibraryMap = {};
 
 chrome.runtime.onInstalled.addListener(async () => {
-  const stored = await chrome.storage.local.get(AUTO_DETECT_STORAGE_KEY);
+  const stored = await chrome.storage.local.get([AUTO_DETECT_STORAGE_KEY, AUTO_SAVE_LIBRARY_STORAGE_KEY]);
+  const nextValues: Record<string, boolean> = {};
+
   if (typeof stored.autoDetectEnabled !== 'boolean') {
-    await chrome.storage.local.set({ [AUTO_DETECT_STORAGE_KEY]: true });
+    nextValues[AUTO_DETECT_STORAGE_KEY] = true;
     autoDetectDefault = true;
   } else {
     autoDetectDefault = stored.autoDetectEnabled;
+  }
+
+  if (typeof stored.autoSaveLibraryEnabled !== 'boolean') {
+    nextValues[AUTO_SAVE_LIBRARY_STORAGE_KEY] = true;
+    autoSaveLibraryDefault = true;
+  } else {
+    autoSaveLibraryDefault = stored.autoSaveLibraryEnabled;
+  }
+
+  if (Object.keys(nextValues).length) {
+    await chrome.storage.local.set(nextValues);
   }
 });
 
@@ -38,6 +57,7 @@ async function handleMessage(message: RuntimeMessage, sender: chrome.runtime.Mes
     case 'GET_POPUP_STATE':
       return getPopupState(message.payload.tabId);
     case 'START_DETECTION':
+      await ensureSessionContext(message.payload.tabId);
       updateSession(message.payload.tabId, { type: 'START_DETECTION' });
       try {
         await attachDebugger(message.payload.tabId);
@@ -67,6 +87,19 @@ async function handleMessage(message: RuntimeMessage, sender: chrome.runtime.Mes
       autoDetectDefault = message.payload.enabled;
       await chrome.storage.local.set({ [AUTO_DETECT_STORAGE_KEY]: message.payload.enabled });
       return getPopupState(message.payload.tabId);
+    case 'SET_AUTO_SAVE_LIBRARY': {
+      let session = await ensureSessionContext(message.payload.tabId);
+      session = updateSession(message.payload.tabId, {
+        type: 'SET_AUTO_SAVE_LIBRARY',
+        payload: { enabled: message.payload.enabled }
+      });
+      autoSaveLibraryDefault = message.payload.enabled;
+      await chrome.storage.local.set({ [AUTO_SAVE_LIBRARY_STORAGE_KEY]: message.payload.enabled });
+      if (message.payload.enabled && session.pageUrl) {
+        session = hydrateSessionFromLibrary(message.payload.tabId, session.pageUrl);
+      }
+      return getPopupState(message.payload.tabId);
+    }
     case 'CLEAR_CAPTIONS':
       updateSession(message.payload.tabId, {
         type: 'CLEAR_CAPTIONS'
@@ -75,15 +108,21 @@ async function handleMessage(message: RuntimeMessage, sender: chrome.runtime.Mes
     case 'DOWNLOAD_CAPTIONS':
       await downloadTrack(message.payload.tabId, message.payload.format);
       return getPopupState(message.payload.tabId);
+    case 'DOWNLOAD_LIBRARY_CAPTIONS':
+      await downloadLibraryEntry(message.payload.pageUrl, message.payload.format);
+      return getPopupState(sender.tab?.id ?? null);
+    case 'DELETE_LIBRARY_CAPTIONS':
+      await deleteLibraryEntry(message.payload.pageUrl);
+      return getPopupState(sender.tab?.id ?? null);
     case 'VTT_SEGMENT': {
       const tabId = sender.tab?.id ?? message.payload.tabId;
       if (!tabId) return { ok: false };
-      const session = getOrCreateSession(tabId);
+      const session = await ensureSessionContext(tabId, sender.tab);
       const autoEnabled = session.autoDetect;
       if (!session.detectionEnabled && !autoEnabled) {
         return { ok: false };
       }
-      updateSession(tabId, {
+      const nextSession = updateSession(tabId, {
         type: 'SEGMENT_CAPTURED',
         payload: {
           url: message.payload.url,
@@ -91,6 +130,7 @@ async function handleMessage(message: RuntimeMessage, sender: chrome.runtime.Mes
           contentType: message.payload.contentType
         }
       });
+      await persistSessionLibrary(tabId, nextSession);
       return { ok: true };
     }
     default:
@@ -98,22 +138,22 @@ async function handleMessage(message: RuntimeMessage, sender: chrome.runtime.Mes
   }
 }
 
-function getPopupState(tabId: number | null): PopupState {
-  if (!tabId) {
-    return { tabId: null, isSupported: false, session: null };
-  }
+async function getPopupState(tabId: number | null): Promise<PopupState> {
+  await ensureLibraryLoaded();
+  const session = tabId ? await ensureSessionContext(tabId) : null;
 
   return {
     tabId,
-    isSupported: true,
-    session: getOrCreateSession(tabId)
+    isSupported: Boolean(tabId),
+    session,
+    library: sortCaptionLibraryEntries(captionLibrary)
   };
 }
 
 function getOrCreateSession(tabId: number): TabSession {
   const session = sessions.get(tabId);
   if (session) return session;
-  const next = createEmptySession(tabId, autoDetectDefault);
+  const next = createEmptySession(tabId, autoDetectDefault, autoSaveLibraryDefault);
   sessions.set(tabId, next);
   return next;
 }
@@ -121,13 +161,25 @@ function getOrCreateSession(tabId: number): TabSession {
 async function ensureSettingsLoaded(): Promise<void> {
   if (!settingsLoadPromise) {
     settingsLoadPromise = chrome.storage.local
-      .get(AUTO_DETECT_STORAGE_KEY)
-      .then(({ autoDetectEnabled = true }) => {
+      .get([AUTO_DETECT_STORAGE_KEY, AUTO_SAVE_LIBRARY_STORAGE_KEY])
+      .then(({ autoDetectEnabled = true, autoSaveLibraryEnabled = true }) => {
         autoDetectDefault = typeof autoDetectEnabled === 'boolean' ? autoDetectEnabled : true;
+        autoSaveLibraryDefault = typeof autoSaveLibraryEnabled === 'boolean' ? autoSaveLibraryEnabled : true;
       });
   }
 
   await settingsLoadPromise;
+}
+
+async function ensureLibraryLoaded(): Promise<void> {
+  if (!libraryLoadPromise) {
+    libraryLoadPromise = chrome.storage.local.get(CAPTION_LIBRARY_STORAGE_KEY).then((stored) => {
+      const value = stored[CAPTION_LIBRARY_STORAGE_KEY];
+      captionLibrary = value && typeof value === 'object' ? (value as CaptionLibraryMap) : {};
+    });
+  }
+
+  await libraryLoadPromise;
 }
 
 function updateSession(tabId: number, action: Parameters<typeof reduceSessionMessage>[1]): TabSession {
@@ -139,12 +191,23 @@ function updateSession(tabId: number, action: Parameters<typeof reduceSessionMes
 async function downloadTrack(tabId: number, format: 'txt' | 'vtt'): Promise<void> {
   const captions = getOrCreateSession(tabId).captions;
   if (!captions.cues.length) return;
-  const content = format === 'vtt' ? cuesToVtt(captions.cues) : cuesToTxt(captions.cues);
+  await downloadCaptions(`captions-${tabId}`, captions.cues, format);
+}
+
+async function downloadLibraryEntry(pageUrl: string, format: 'txt' | 'vtt'): Promise<void> {
+  await ensureLibraryLoaded();
+  const entry = captionLibrary[pageUrl];
+  if (!entry || !entry.captions.cues.length) return;
+  await downloadCaptions(sanitizeFilename(entry.title || entry.pageUrl), entry.captions.cues, format);
+}
+
+async function downloadCaptions(filenameBase: string, cues: TabSession['captions']['cues'], format: 'txt' | 'vtt'): Promise<void> {
+  const content = format === 'vtt' ? cuesToVtt(cues) : cuesToTxt(cues);
   const mimeType = format === 'vtt' ? 'text/vtt' : 'text/plain';
   const downloadUrl = createDownloadDataUrl(content, mimeType);
   await chrome.downloads.download({
     url: downloadUrl,
-    filename: `captions-${tabId}.${format}`,
+    filename: `${filenameBase}.${format}`,
     saveAs: true
   });
 }
@@ -206,7 +269,7 @@ async function handleDebuggerEvent(
         { requestId }
       )) as { body?: string; base64Encoded?: boolean };
       const text = decodeDebuggerBody(response.body ?? '', Boolean(response.base64Encoded));
-      updateSession(tabId, {
+      const nextSession = updateSession(tabId, {
         type: 'SEGMENT_CAPTURED',
         payload: {
           url: meta.url,
@@ -214,13 +277,73 @@ async function handleDebuggerEvent(
           contentType: meta.contentType
         }
       });
+      await persistSessionLibrary(tabId, nextSession);
     } catch {
       // Ignore responses whose bodies are unavailable.
     }
   }
 }
 
+async function ensureSessionContext(tabId: number, tab?: chrome.tabs.Tab): Promise<TabSession> {
+  await ensureLibraryLoaded();
+  const tabInfo = tab ?? (await chrome.tabs.get(tabId).catch(() => null));
+  const pageUrl = typeof tabInfo?.url === 'string' ? tabInfo.url : null;
+  const pageTitle = typeof tabInfo?.title === 'string' ? tabInfo.title : null;
+  const session = updateSession(tabId, {
+    type: 'SET_PAGE_CONTEXT',
+    payload: { pageUrl, pageTitle }
+  });
+
+  if (!pageUrl) return session;
+  return hydrateSessionFromLibrary(tabId, pageUrl);
+}
+
+function hydrateSessionFromLibrary(tabId: number, pageUrl: string): TabSession {
+  const session = getOrCreateSession(tabId);
+  if (!session.autoSaveLibrary) return session;
+  const entry = captionLibrary[pageUrl];
+  if (!entry) return session;
+  return updateSession(tabId, {
+    type: 'HYDRATE_CAPTIONS_FROM_LIBRARY',
+    payload: {
+      pageUrl,
+      captions: entry.captions
+    }
+  });
+}
+
+async function persistSessionLibrary(tabId: number, session: TabSession): Promise<void> {
+  await ensureLibraryLoaded();
+  if (!session.autoSaveLibrary || !session.pageUrl || !session.captions.cues.length) {
+    return;
+  }
+
+  captionLibrary = {
+    ...captionLibrary,
+    [session.pageUrl]: mergeCaptionLibraryEntry(
+      captionLibrary[session.pageUrl],
+      session.pageUrl,
+      session.pageTitle ?? session.pageUrl,
+      session.captions
+    )
+  };
+  await chrome.storage.local.set({ [CAPTION_LIBRARY_STORAGE_KEY]: captionLibrary });
+}
+
+async function deleteLibraryEntry(pageUrl: string): Promise<void> {
+  await ensureLibraryLoaded();
+  if (!captionLibrary[pageUrl]) return;
+  const nextLibrary = { ...captionLibrary };
+  delete nextLibrary[pageUrl];
+  captionLibrary = nextLibrary;
+  await chrome.storage.local.set({ [CAPTION_LIBRARY_STORAGE_KEY]: captionLibrary });
+}
+
 function toErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) return error.message;
   return 'Unknown debugger error';
+}
+
+function sanitizeFilename(value: string): string {
+  return value.replace(/[<>:"/\\|?*\u0000-\u001F]/g, '_').slice(0, 120) || 'captions';
 }

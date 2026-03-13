@@ -7,9 +7,13 @@ Chrome MV3 extension that captures segmented WebVTT subtitles from the active ta
 - Captures segmented `VTT` subtitle responses from the active tab
 - Merges cues into a single buffer
 - Removes duplicate cues
+- Saves merged captions by page URL
+- Reuses previously saved captions when the same page URL is opened again
 - Shows collected captions in the popup
 - Supports `Copy`, `Download TXT`, `Download VTT`, and `Clear`
+- Supports saved-caption download and delete from the popup library
 - Enables subtitle auto-detection by default so early subtitle prefetches are less likely to be missed
+- Enables URL-based auto save/load by default
 
 ## Scope
 
@@ -19,7 +23,8 @@ Current v1 behavior is intentionally narrow.
 - Supports `data:` bodies when the decoded content is `WEBVTT`
 - Ignores media segments such as `.m4s` and fragmented MP4 payloads
 - Merges all valid VTT cues for the current tab into one buffer
-- Uses popup UI only
+- Stores captions by page URL in local extension storage
+- Uses popup UI only with `Live`, `Library`, and `Settings` tabs
 
 ## Tech Stack
 
@@ -83,11 +88,14 @@ pnpm build
 4. If needed, click `Start Detection`
 5. Watch captions accumulate in `Live Buffer`
 6. Use `Copy`, `TXT`, `VTT`, or `Clear`
+7. Open `Library` to re-download or delete captions saved for previous URLs
+8. Open `Settings` to control URL-based auto save/load
 
 ## Notes
 
 - This extension is optimized for VTT-based subtitle streams, not generic media extraction
 - Subtitle traffic may arrive very early during page load, so auto-detect defaults to enabled
+- Saved captions are keyed by page URL, not by individual subtitle segment URL
 - Some sites require both page-level interception and `chrome.debugger`-assisted capture for stable results
 
 ## Troubleshooting
@@ -104,6 +112,11 @@ pnpm build
 - Make sure captions have already been collected
 - Reopen the popup and try again
 
+### Saved captions are missing for the same page
+
+- Check `Settings` and confirm `Auto save captions by URL` is enabled
+- Saved captions are matched by page URL, so a different URL means a different record
+
 ### Korean subtitles look duplicated or corrupted
 
 - Older collected cues may include stale mojibake data from a previous build
@@ -112,4 +125,3 @@ pnpm build
 ## Additional Documentation
 
 Detailed implementation notes, troubleshooting history, and context-engineering feedback are documented in [docs/implementation-notes.md](/Users/dodo/workspace/chrome-extension-vtt-collector/docs/implementation-notes.md).
-

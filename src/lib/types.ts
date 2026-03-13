@@ -12,12 +12,25 @@ export type CaptionBuffer = {
   lastUpdatedAt: number;
 };
 
+export type CaptionLibraryEntry = {
+  pageUrl: string;
+  title: string;
+  captions: CaptionBuffer;
+  updatedAt: number;
+};
+
+export type CaptionLibraryMap = Record<string, CaptionLibraryEntry>;
+
 export type SessionStatus = 'idle' | 'detecting' | 'ready' | 'collecting' | 'stopped';
 
 export type TabSession = {
   tabId: number;
+  pageUrl: string | null;
+  pageTitle: string | null;
   autoDetect: boolean;
+  autoSaveLibrary: boolean;
   detectionEnabled: boolean;
+  hydratedLibraryUrl: string | null;
   status: SessionStatus;
   captions: CaptionBuffer;
   lastError: string | null;
@@ -27,6 +40,7 @@ export type PopupState = {
   tabId: number | null;
   isSupported: boolean;
   session: TabSession | null;
+  library: CaptionLibraryEntry[];
 };
 
 export type DownloadFormat = 'txt' | 'vtt';
@@ -38,11 +52,17 @@ export type RuntimeMessage =
   | { type: 'START_DETECTION'; payload: { tabId: number } }
   | { type: 'STOP_DETECTION'; payload: { tabId: number } }
   | { type: 'SET_AUTO_DETECT'; payload: { tabId: number; enabled: boolean } }
+  | { type: 'SET_AUTO_SAVE_LIBRARY'; payload: { tabId: number; enabled: boolean } }
   | { type: 'CLEAR_CAPTIONS'; payload: { tabId: number } }
-  | { type: 'DOWNLOAD_CAPTIONS'; payload: { tabId: number; format: DownloadFormat } };
+  | { type: 'DOWNLOAD_CAPTIONS'; payload: { tabId: number; format: DownloadFormat } }
+  | { type: 'DOWNLOAD_LIBRARY_CAPTIONS'; payload: { pageUrl: string; format: DownloadFormat } }
+  | { type: 'DELETE_LIBRARY_CAPTIONS'; payload: { pageUrl: string } };
 
 export type SessionAction =
   | { type: 'SET_AUTO_DETECT'; payload: { enabled: boolean } }
+  | { type: 'SET_AUTO_SAVE_LIBRARY'; payload: { enabled: boolean } }
+  | { type: 'SET_PAGE_CONTEXT'; payload: { pageUrl: string | null; pageTitle: string | null } }
+  | { type: 'HYDRATE_CAPTIONS_FROM_LIBRARY'; payload: { pageUrl: string; captions: CaptionBuffer } }
   | { type: 'START_DETECTION' }
   | { type: 'STOP_DETECTION' }
   | { type: 'SET_ERROR'; payload: { message: string } }

@@ -1,11 +1,15 @@
 import { isLikelyVttRequest, parseVttCues, upsertTrack } from './subtitles';
 import type { CaptionBuffer, SessionAction, TabSession } from './types';
 
-export function createEmptySession(tabId: number, autoDetect = true): TabSession {
+export function createEmptySession(tabId: number, autoDetect = true, autoSaveLibrary = true): TabSession {
   return {
     tabId,
+    pageUrl: null,
+    pageTitle: null,
     autoDetect,
+    autoSaveLibrary,
     detectionEnabled: false,
+    hydratedLibraryUrl: null,
     status: 'idle',
     captions: createCaptionBuffer(),
     lastError: null
@@ -19,6 +23,15 @@ export function reduceSessionMessage(session: TabSession, action: SessionAction)
         ...session,
         autoDetect: action.payload.enabled
       };
+    case 'SET_AUTO_SAVE_LIBRARY':
+      return {
+        ...session,
+        autoSaveLibrary: action.payload.enabled
+      };
+    case 'SET_PAGE_CONTEXT':
+      return setPageContext(session, action.payload.pageUrl, action.payload.pageTitle);
+    case 'HYDRATE_CAPTIONS_FROM_LIBRARY':
+      return hydrateCaptionsFromLibrary(session, action.payload.pageUrl, action.payload.captions);
     case 'START_DETECTION':
       return {
         ...session,
@@ -61,6 +74,40 @@ function captureSegment(session: TabSession, url: string, text: string, contentT
     captions: upsertTrack(session.captions, parseVttCues(text)),
     status: 'collecting',
     lastError: null
+  };
+}
+
+function setPageContext(session: TabSession, pageUrl: string | null, pageTitle: string | null): TabSession {
+  if (session.pageUrl === pageUrl) {
+    return {
+      ...session,
+      pageTitle
+    };
+  }
+
+  return {
+    ...session,
+    pageUrl,
+    pageTitle,
+    hydratedLibraryUrl: null,
+    captions: createCaptionBuffer(),
+    status: 'idle',
+    lastError: null
+  };
+}
+
+function hydrateCaptionsFromLibrary(session: TabSession, pageUrl: string, captions: CaptionBuffer): TabSession {
+  if (session.pageUrl !== pageUrl || session.hydratedLibraryUrl === pageUrl) {
+    return session;
+  }
+
+  const mergedCaptions = upsertTrack(session.captions, captions.cues);
+
+  return {
+    ...session,
+    captions: mergedCaptions,
+    hydratedLibraryUrl: pageUrl,
+    status: mergedCaptions.cues.length ? 'ready' : session.status
   };
 }
 
