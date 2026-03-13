@@ -171,7 +171,7 @@ export function PopupApp({
                       className="grid grid-cols-[88px_1fr] gap-3 rounded-md border border-transparent bg-secondary/45 px-3 py-2 transition-colors hover:border-border hover:bg-secondary/70"
                     >
                       <time className="pt-0.5 text-xs font-semibold tracking-wide text-primary">
-                        {formatTimestamp(cue.start)}
+                        {formatBufferTimestamp(cue.start)}
                       </time>
                       <p className="text-sm leading-5 text-foreground/90">{cue.text}</p>
                     </article>
@@ -188,4 +188,8 @@ export function PopupApp({
       </Card>
     </main>
   );
+}
+
+function formatBufferTimestamp(seconds: number): string {
+  return formatTimestamp(seconds).split('.')[0] ?? formatTimestamp(seconds);
 }

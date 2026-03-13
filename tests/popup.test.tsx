@@ -41,7 +41,7 @@ describe('PopupApp', () => {
     );
 
     expect(screen.getByText('hello')).toBeInTheDocument();
-    expect(screen.getByText('00:00:01.000')).toBeInTheDocument();
+    expect(screen.getByText('00:00:01')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Download VTT' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Clear Captions' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Copy All Captions' })).toBeInTheDocument();
