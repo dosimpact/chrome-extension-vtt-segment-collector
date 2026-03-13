@@ -2,6 +2,8 @@
 
 Chrome MV3 extension that captures segmented WebVTT subtitles from the active tab, merges them into a single live buffer, and lets you copy or download the collected captions from the popup.
 
+![alt text](image.png)  
+
 ## What It Does
 
 - Captures segmented `VTT` subtitle responses from the active tab
