@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "VTT Collector",
+  "description": "Collect segmented VTT subtitles from the active tab and download them as VTT or TXT.",
+  "version": "0.1.0",
+  "permissions": ["activeTab", "debugger", "downloads", "scripting", "storage", "tabs"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["page-script.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

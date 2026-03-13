@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply m-0 bg-background font-sans text-foreground antialiased;
+  }
+
+  button,
+  input {
+    font: inherit;
+  }
+}
