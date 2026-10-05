@@ -1,26 +1,42 @@
 import { mergeCaptionLibraryEntry, sortCaptionLibraryEntries } from './lib/caption-library';
 import { cuesToTxt, cuesToVtt } from './lib/subtitles';
 import { decodeDebuggerBody } from './lib/debugger-body';
+import { createCaptionFilenameBase } from './lib/download-filename';
 import { shouldCaptureResponseBody } from './lib/debugger-network';
 import { createDownloadDataUrl } from './lib/download-url';
 import { createEmptySession, reduceSessionMessage } from './lib/session-store';
-import type { CaptionLibraryMap, PopupState, RuntimeMessage, TabSession } from './lib/types';
+import type { CaptionFontSize, CaptionFontWeight, CaptionLibraryMap, PopupState, RuntimeMessage, TabSession } from './lib/types';
 
 const sessions = new Map<number, TabSession>();
 const debuggerTargets = new Set<number>();
 const requestMap = new Map<string, { tabId: number; url: string; contentType?: string }>();
 const AUTO_DETECT_STORAGE_KEY = 'autoDetectEnabled';
 const AUTO_SAVE_LIBRARY_STORAGE_KEY = 'autoSaveLibraryEnabled';
+const DOM_EXTRACTION_STORAGE_KEY = 'domExtractionEnabled';
+const VTT_RESPONSE_ANALYSIS_STORAGE_KEY = 'vttResponseAnalysisEnabled';
+const CAPTION_FONT_SIZE_STORAGE_KEY = 'captionFontSize';
+const CAPTION_FONT_WEIGHT_STORAGE_KEY = 'captionFontWeight';
 const CAPTION_LIBRARY_STORAGE_KEY = 'captionLibrary';
 let autoDetectDefault = true;
 let autoSaveLibraryDefault = true;
+let domExtractionDefault = true;
+let vttResponseAnalysisDefault = true;
+let captionFontSizeDefault: CaptionFontSize = 'sm';
+let captionFontWeightDefault: CaptionFontWeight = 'normal';
 let settingsLoadPromise: Promise<void> | null = null;
 let libraryLoadPromise: Promise<void> | null = null;
 let captionLibrary: CaptionLibraryMap = {};
 
 chrome.runtime.onInstalled.addListener(async () => {
-  const stored = await chrome.storage.local.get([AUTO_DETECT_STORAGE_KEY, AUTO_SAVE_LIBRARY_STORAGE_KEY]);
-  const nextValues: Record<string, boolean> = {};
+  const stored = await chrome.storage.local.get([
+    AUTO_DETECT_STORAGE_KEY,
+    AUTO_SAVE_LIBRARY_STORAGE_KEY,
+    DOM_EXTRACTION_STORAGE_KEY,
+    VTT_RESPONSE_ANALYSIS_STORAGE_KEY,
+    CAPTION_FONT_SIZE_STORAGE_KEY,
+    CAPTION_FONT_WEIGHT_STORAGE_KEY
+  ]);
+  const nextValues: Record<string, boolean | string> = {};
 
   if (typeof stored.autoDetectEnabled !== 'boolean') {
     nextValues[AUTO_DETECT_STORAGE_KEY] = true;
@@ -36,9 +52,41 @@ chrome.runtime.onInstalled.addListener(async () => {
     autoSaveLibraryDefault = stored.autoSaveLibraryEnabled;
   }
 
+  if (typeof stored.domExtractionEnabled !== 'boolean') {
+    nextValues[DOM_EXTRACTION_STORAGE_KEY] = true;
+    domExtractionDefault = true;
+  } else {
+    domExtractionDefault = stored.domExtractionEnabled;
+  }
+
+  if (typeof stored.vttResponseAnalysisEnabled !== 'boolean') {
+    nextValues[VTT_RESPONSE_ANALYSIS_STORAGE_KEY] = true;
+    vttResponseAnalysisDefault = true;
+  } else {
+    vttResponseAnalysisDefault = stored.vttResponseAnalysisEnabled;
+  }
+
+  if (!isCaptionFontSize(stored.captionFontSize)) {
+    nextValues[CAPTION_FONT_SIZE_STORAGE_KEY] = captionFontSizeDefault;
+  } else {
+    captionFontSizeDefault = stored.captionFontSize;
+  }
+
+  if (!isCaptionFontWeight(stored.captionFontWeight)) {
+    nextValues[CAPTION_FONT_WEIGHT_STORAGE_KEY] = captionFontWeightDefault;
+  } else {
+    captionFontWeightDefault = stored.captionFontWeight;
+  }
+
   if (Object.keys(nextValues).length) {
     await chrome.storage.local.set(nextValues);
   }
+
+  await ensureContentScriptsInjectedIntoOpenTabs();
+});
+
+chrome.runtime.onStartup.addListener(() => {
+  void ensureContentScriptsInjectedIntoOpenTabs();
 });
 
 chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendResponse) => {
@@ -100,6 +148,54 @@ async function handleMessage(message: RuntimeMessage, sender: chrome.runtime.Mes
       }
       return getPopupState(message.payload.tabId);
     }
+    case 'SET_DOM_EXTRACTION':
+      updateSession(message.payload.tabId, {
+        type: 'SET_DOM_EXTRACTION',
+        payload: { enabled: message.payload.enabled }
+      });
+      domExtractionDefault = message.payload.enabled;
+      await chrome.storage.local.set({ [DOM_EXTRACTION_STORAGE_KEY]: message.payload.enabled });
+      return getPopupState(message.payload.tabId);
+    case 'SET_VTT_RESPONSE_ANALYSIS':
+      updateSession(message.payload.tabId, {
+        type: 'SET_VTT_RESPONSE_ANALYSIS',
+        payload: { enabled: message.payload.enabled }
+      });
+      vttResponseAnalysisDefault = message.payload.enabled;
+      await chrome.storage.local.set({ [VTT_RESPONSE_ANALYSIS_STORAGE_KEY]: message.payload.enabled });
+      if (!message.payload.enabled) {
+        await detachDebugger(message.payload.tabId);
+      } else {
+        const session = getOrCreateSession(message.payload.tabId);
+        if (session.detectionEnabled) {
+          await attachDebugger(message.payload.tabId).catch((error) => {
+            updateSession(message.payload.tabId, {
+              type: 'SET_ERROR',
+              payload: { message: toErrorMessage(error) }
+            });
+          });
+        }
+      }
+      return getPopupState(message.payload.tabId);
+    case 'SET_CAPTION_DISPLAY':
+      if (message.payload.fontSize) {
+        captionFontSizeDefault = message.payload.fontSize;
+      }
+      if (message.payload.fontWeight) {
+        captionFontWeightDefault = message.payload.fontWeight;
+      }
+      updateSession(message.payload.tabId, {
+        type: 'SET_CAPTION_DISPLAY',
+        payload: {
+          fontSize: message.payload.fontSize,
+          fontWeight: message.payload.fontWeight
+        }
+      });
+      await chrome.storage.local.set({
+        [CAPTION_FONT_SIZE_STORAGE_KEY]: captionFontSizeDefault,
+        [CAPTION_FONT_WEIGHT_STORAGE_KEY]: captionFontWeightDefault
+      });
+      return getPopupState(message.payload.tabId);
     case 'CLEAR_CAPTIONS':
       updateSession(message.payload.tabId, {
         type: 'CLEAR_CAPTIONS'
@@ -111,6 +207,9 @@ async function handleMessage(message: RuntimeMessage, sender: chrome.runtime.Mes
     case 'DOWNLOAD_LIBRARY_CAPTIONS':
       await downloadLibraryEntry(message.payload.pageUrl, message.payload.format);
       return getPopupState(sender.tab?.id ?? null);
+    case 'DOWNLOAD_ALL_LIBRARY_CAPTIONS':
+      await downloadAllLibraryEntries(message.payload.format);
+      return getPopupState(sender.tab?.id ?? null);
     case 'DELETE_LIBRARY_CAPTIONS':
       await deleteLibraryEntry(message.payload.pageUrl);
       return getPopupState(sender.tab?.id ?? null);
@@ -120,6 +219,9 @@ async function handleMessage(message: RuntimeMessage, sender: chrome.runtime.Mes
       const session = await ensureSessionContext(tabId, sender.tab);
       const autoEnabled = session.autoDetect;
       if (!session.detectionEnabled && !autoEnabled) {
+        return { ok: false };
+      }
+      if (!shouldAcceptSegmentFromSource(session, message.payload.url)) {
         return { ok: false };
       }
       const nextSession = updateSession(tabId, {
@@ -140,6 +242,9 @@ async function handleMessage(message: RuntimeMessage, sender: chrome.runtime.Mes
 
 async function getPopupState(tabId: number | null): Promise<PopupState> {
   await ensureLibraryLoaded();
+  if (tabId) {
+    await ensureContentScriptInjected(tabId);
+  }
   const session = tabId ? await ensureSessionContext(tabId) : null;
 
   return {
@@ -153,7 +258,15 @@ async function getPopupState(tabId: number | null): Promise<PopupState> {
 function getOrCreateSession(tabId: number): TabSession {
   const session = sessions.get(tabId);
   if (session) return session;
-  const next = createEmptySession(tabId, autoDetectDefault, autoSaveLibraryDefault);
+  const next = createEmptySession(
+    tabId,
+    autoDetectDefault,
+    autoSaveLibraryDefault,
+    domExtractionDefault,
+    vttResponseAnalysisDefault,
+    captionFontSizeDefault,
+    captionFontWeightDefault
+  );
   sessions.set(tabId, next);
   return next;
 }
@@ -161,10 +274,28 @@ function getOrCreateSession(tabId: number): TabSession {
 async function ensureSettingsLoaded(): Promise<void> {
   if (!settingsLoadPromise) {
     settingsLoadPromise = chrome.storage.local
-      .get([AUTO_DETECT_STORAGE_KEY, AUTO_SAVE_LIBRARY_STORAGE_KEY])
-      .then(({ autoDetectEnabled = true, autoSaveLibraryEnabled = true }) => {
+      .get([
+        AUTO_DETECT_STORAGE_KEY,
+        AUTO_SAVE_LIBRARY_STORAGE_KEY,
+        DOM_EXTRACTION_STORAGE_KEY,
+        VTT_RESPONSE_ANALYSIS_STORAGE_KEY,
+        CAPTION_FONT_SIZE_STORAGE_KEY,
+        CAPTION_FONT_WEIGHT_STORAGE_KEY
+      ])
+      .then(({
+        autoDetectEnabled = true,
+        autoSaveLibraryEnabled = true,
+        domExtractionEnabled = true,
+        vttResponseAnalysisEnabled = true,
+        captionFontSize = 'sm',
+        captionFontWeight = 'normal'
+      }) => {
         autoDetectDefault = typeof autoDetectEnabled === 'boolean' ? autoDetectEnabled : true;
         autoSaveLibraryDefault = typeof autoSaveLibraryEnabled === 'boolean' ? autoSaveLibraryEnabled : true;
+        domExtractionDefault = typeof domExtractionEnabled === 'boolean' ? domExtractionEnabled : true;
+        vttResponseAnalysisDefault = typeof vttResponseAnalysisEnabled === 'boolean' ? vttResponseAnalysisEnabled : true;
+        captionFontSizeDefault = isCaptionFontSize(captionFontSize) ? captionFontSize : 'sm';
+        captionFontWeightDefault = isCaptionFontWeight(captionFontWeight) ? captionFontWeight : 'normal';
       });
   }
 
@@ -189,16 +320,26 @@ function updateSession(tabId: number, action: Parameters<typeof reduceSessionMes
 }
 
 async function downloadTrack(tabId: number, format: 'txt' | 'vtt'): Promise<void> {
-  const captions = getOrCreateSession(tabId).captions;
+  const session = getOrCreateSession(tabId);
+  const captions = session.captions;
   if (!captions.cues.length) return;
-  await downloadCaptions(`captions-${tabId}`, captions.cues, format);
+  await downloadCaptions(createCaptionFilenameBase(session.pageUrl, `captions-${tabId}`), captions.cues, format);
 }
 
 async function downloadLibraryEntry(pageUrl: string, format: 'txt' | 'vtt'): Promise<void> {
   await ensureLibraryLoaded();
   const entry = captionLibrary[pageUrl];
   if (!entry || !entry.captions.cues.length) return;
-  await downloadCaptions(sanitizeFilename(entry.title || entry.pageUrl), entry.captions.cues, format);
+  await downloadCaptions(createCaptionFilenameBase(entry.pageUrl, entry.title), entry.captions.cues, format);
+}
+
+async function downloadAllLibraryEntries(format: 'txt' | 'vtt'): Promise<void> {
+  await ensureLibraryLoaded();
+  const entries = sortCaptionLibraryEntries(captionLibrary).filter((entry) => entry.captions.cues.length);
+
+  for (const entry of entries) {
+    await downloadCaptions(createCaptionFilenameBase(entry.pageUrl, entry.title), entry.captions.cues, format);
+  }
 }
 
 async function downloadCaptions(filenameBase: string, cues: TabSession['captions']['cues'], format: 'txt' | 'vtt'): Promise<void> {
@@ -213,6 +354,7 @@ async function downloadCaptions(filenameBase: string, cues: TabSession['captions
 }
 
 async function attachDebugger(tabId: number): Promise<void> {
+  if (!getOrCreateSession(tabId).vttResponseAnalysisEnabled) return;
   if (debuggerTargets.has(tabId)) return;
   const target: chrome.debugger.Debuggee = { tabId };
   await chrome.debugger.attach(target, '1.3');
@@ -234,6 +376,26 @@ async function detachDebugger(tabId: number): Promise<void> {
   }
 }
 
+async function ensureContentScriptsInjectedIntoOpenTabs(): Promise<void> {
+  const tabs = await chrome.tabs.query({ url: ['http://*/*', 'https://*/*'] });
+
+  for (const tab of tabs) {
+    if (!tab.id) continue;
+    await ensureContentScriptInjected(tab.id);
+  }
+}
+
+async function ensureContentScriptInjected(tabId: number): Promise<void> {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ['content.js']
+    });
+  } catch {
+    // Ignore tabs where scripts can't be injected or where the tab disappeared.
+  }
+}
+
 async function handleDebuggerEvent(
   source: chrome.debugger.Debuggee,
   method: string,
@@ -241,6 +403,7 @@ async function handleDebuggerEvent(
 ): Promise<void> {
   const tabId = source.tabId;
   if (!tabId || !debuggerTargets.has(tabId)) return;
+  if (!getOrCreateSession(tabId).vttResponseAnalysisEnabled) return;
 
   if (method === 'Network.responseReceived') {
     const requestId = typeof params.requestId === 'string' ? params.requestId : null;
@@ -282,6 +445,26 @@ async function handleDebuggerEvent(
       // Ignore responses whose bodies are unavailable.
     }
   }
+}
+
+function shouldAcceptSegmentFromSource(session: TabSession, url: string): boolean {
+  if (isRenderedDomCaptionUrl(url)) {
+    return session.domExtractionEnabled;
+  }
+
+  return session.vttResponseAnalysisEnabled;
+}
+
+function isRenderedDomCaptionUrl(url: string): boolean {
+  return url === 'https://vtt-collector.local/rendered-dom-captions.vtt';
+}
+
+function isCaptionFontSize(value: unknown): value is CaptionFontSize {
+  return value === 'sm' || value === 'base' || value === 'lg';
+}
+
+function isCaptionFontWeight(value: unknown): value is CaptionFontWeight {
+  return value === 'normal' || value === 'medium' || value === 'semibold';
 }
 
 async function ensureSessionContext(tabId: number, tab?: chrome.tabs.Tab): Promise<TabSession> {
@@ -342,8 +525,4 @@ async function deleteLibraryEntry(pageUrl: string): Promise<void> {
 function toErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) return error.message;
   return 'Unknown debugger error';
-}
-
-function sanitizeFilename(value: string): string {
-  return value.replace(/[<>:"/\\|?*\u0000-\u001F]/g, '_').slice(0, 120) || 'captions';
 }

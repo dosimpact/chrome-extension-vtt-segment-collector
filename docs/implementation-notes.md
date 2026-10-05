@@ -11,6 +11,10 @@
 - `pnpm`
 - 팝업 UI: `Tailwind CSS + Radix UI primitives + shadcn 스타일 컴포넌트`
 
+## 2026-10-05 업데이트 반영
+
+`chrome-extension-vtt-collector-recovered`의 코드를 기준으로 사이드 패널, DOM 자막 폴링, DOM/VTT 개별 수집 설정, 자막 글꼴 크기·굵기, 조건부 자동 스크롤, 다운로드 파일명 및 자막 텍스트 보정을 반영했다. 확장 표시 이름은 복원본과 같은 `Security Checker`이며, `dist/`를 빌드해 로드한다. 아래 구현 과정 기록은 이전 개발 당시의 맥락을 포함한다.
+
 ## 현재 구현 범위
 
 현재까지 구현된 기능은 다음과 같다.

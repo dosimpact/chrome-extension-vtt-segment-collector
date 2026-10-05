@@ -1,13 +1,25 @@
 import { isLikelyVttRequest, parseVttCues, upsertTrack } from './subtitles';
-import type { CaptionBuffer, SessionAction, TabSession } from './types';
+import type { CaptionBuffer, CaptionFontSize, CaptionFontWeight, SessionAction, TabSession } from './types';
 
-export function createEmptySession(tabId: number, autoDetect = true, autoSaveLibrary = true): TabSession {
+export function createEmptySession(
+  tabId: number,
+  autoDetect = true,
+  autoSaveLibrary = true,
+  domExtractionEnabled = true,
+  vttResponseAnalysisEnabled = true,
+  captionFontSize: CaptionFontSize = 'sm',
+  captionFontWeight: CaptionFontWeight = 'normal'
+): TabSession {
   return {
     tabId,
     pageUrl: null,
     pageTitle: null,
     autoDetect,
     autoSaveLibrary,
+    domExtractionEnabled,
+    vttResponseAnalysisEnabled,
+    captionFontSize,
+    captionFontWeight,
     detectionEnabled: false,
     hydratedLibraryUrl: null,
     status: 'idle',
@@ -27,6 +39,22 @@ export function reduceSessionMessage(session: TabSession, action: SessionAction)
       return {
         ...session,
         autoSaveLibrary: action.payload.enabled
+      };
+    case 'SET_DOM_EXTRACTION':
+      return {
+        ...session,
+        domExtractionEnabled: action.payload.enabled
+      };
+    case 'SET_VTT_RESPONSE_ANALYSIS':
+      return {
+        ...session,
+        vttResponseAnalysisEnabled: action.payload.enabled
+      };
+    case 'SET_CAPTION_DISPLAY':
+      return {
+        ...session,
+        captionFontSize: action.payload.fontSize ?? session.captionFontSize,
+        captionFontWeight: action.payload.fontWeight ?? session.captionFontWeight
       };
     case 'SET_PAGE_CONTEXT':
       return setPageContext(session, action.payload.pageUrl, action.payload.pageTitle);

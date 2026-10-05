@@ -1,6 +1,6 @@
 # VTT Collector
 
-Chrome MV3 extension that captures segmented WebVTT subtitles from the active tab, merges them into a single live buffer, and lets you copy or download the collected captions from the popup.
+Chrome MV3 extension (displayed as `Security Checker`) that captures segmented WebVTT subtitles from the active tab, merges them into a single live buffer, and lets you copy or download the collected captions from the popup or side panel.
 
 ![alt text](image.png)  
 
@@ -26,7 +26,11 @@ Current v1 behavior is intentionally narrow.
 - Ignores media segments such as `.m4s` and fragmented MP4 payloads
 - Merges all valid VTT cues for the current tab into one buffer
 - Stores captions by page URL in local extension storage
-- Uses popup UI only with `Live`, `Library`, and `Settings` tabs
+- Uses popup and side panel UI with `Live`, `Library`, and `Settings` tabs
+- Collects rendered player captions through DOM polling
+- Allows DOM extraction and VTT response analysis to be enabled independently
+- Supports caption font size/weight settings and conditional transcript auto-scroll
+- Repairs subtitle text encoding and uses page-aware download filenames
 
 ## Tech Stack
 
@@ -40,13 +44,13 @@ Current v1 behavior is intentionally narrow.
 
 ## Project Structure
 
-- [/Users/dodo/workspace/chrome-extension-vtt-collector/src/page-script.ts](/Users/dodo/workspace/chrome-extension-vtt-collector/src/page-script.ts)
+- [/Users/dodo/workspace/utils/chrome-extension-vtt-segment-collector/src/page-script.ts](/Users/dodo/workspace/utils/chrome-extension-vtt-segment-collector/src/page-script.ts)
   Page-context `fetch` / `XMLHttpRequest` interception
-- [/Users/dodo/workspace/chrome-extension-vtt-collector/src/content.ts](/Users/dodo/workspace/chrome-extension-vtt-collector/src/content.ts)
+- [/Users/dodo/workspace/utils/chrome-extension-vtt-segment-collector/src/content.ts](/Users/dodo/workspace/utils/chrome-extension-vtt-segment-collector/src/content.ts)
   Bridge from page context to extension runtime
-- [/Users/dodo/workspace/chrome-extension-vtt-collector/src/background.ts](/Users/dodo/workspace/chrome-extension-vtt-collector/src/background.ts)
+- [/Users/dodo/workspace/utils/chrome-extension-vtt-segment-collector/src/background.ts](/Users/dodo/workspace/utils/chrome-extension-vtt-segment-collector/src/background.ts)
   Session management, debugger-assisted network capture, downloads
-- [/Users/dodo/workspace/chrome-extension-vtt-collector/src/popup/PopupApp.tsx](/Users/dodo/workspace/chrome-extension-vtt-collector/src/popup/PopupApp.tsx)
+- [/Users/dodo/workspace/utils/chrome-extension-vtt-segment-collector/src/popup/PopupApp.tsx](/Users/dodo/workspace/utils/chrome-extension-vtt-segment-collector/src/popup/PopupApp.tsx)
   Popup UI
 
 ## Installation
@@ -66,7 +70,7 @@ pnpm build
 3. Open `chrome://extensions`
 4. Enable `Developer mode`
 5. Click `Load unpacked`
-6. Select [/Users/dodo/workspace/chrome-extension-vtt-collector/dist](/Users/dodo/workspace/chrome-extension-vtt-collector/dist)
+6. Select [/Users/dodo/workspace/utils/chrome-extension-vtt-segment-collector/dist](/Users/dodo/workspace/utils/chrome-extension-vtt-segment-collector/dist)
 
 ## Development
 
@@ -91,7 +95,8 @@ pnpm build
 5. Watch captions accumulate in `Live Buffer`
 6. Use `Copy`, `TXT`, `VTT`, or `Clear`
 7. Open `Library` to re-download or delete captions saved for previous URLs
-8. Open `Settings` to control URL-based auto save/load
+8. Open `Settings` to control URL-based auto save/load, DOM/VTT collection, and caption font size/weight
+9. Use the side panel for a persistent transcript view
 
 ## Notes
 
@@ -126,4 +131,4 @@ pnpm build
 
 ## Additional Documentation
 
-Detailed implementation notes, troubleshooting history, and context-engineering feedback are documented in [docs/implementation-notes.md](/Users/dodo/workspace/chrome-extension-vtt-collector/docs/implementation-notes.md).
+Detailed implementation notes, troubleshooting history, and context-engineering feedback are documented in [docs/implementation-notes.md](/Users/dodo/workspace/utils/chrome-extension-vtt-segment-collector/docs/implementation-notes.md).

@@ -7,7 +7,37 @@ describe('session store', () => {
 
     expect(session.autoDetect).toBe(true);
     expect(session.autoSaveLibrary).toBe(true);
+    expect(session.domExtractionEnabled).toBe(true);
+    expect(session.vttResponseAnalysisEnabled).toBe(true);
+    expect(session.captionFontSize).toBe('sm');
+    expect(session.captionFontWeight).toBe('normal');
     expect(session.detectionEnabled).toBe(false);
+  });
+
+  it('stores collection mode settings on the session', () => {
+    const session = createEmptySession(3);
+    const withoutDom = reduceSessionMessage(session, {
+      type: 'SET_DOM_EXTRACTION',
+      payload: { enabled: false }
+    });
+    const withoutVttResponses = reduceSessionMessage(withoutDom, {
+      type: 'SET_VTT_RESPONSE_ANALYSIS',
+      payload: { enabled: false }
+    });
+
+    expect(withoutVttResponses.domExtractionEnabled).toBe(false);
+    expect(withoutVttResponses.vttResponseAnalysisEnabled).toBe(false);
+  });
+
+  it('stores caption display settings on the session', () => {
+    const session = createEmptySession(3);
+    const next = reduceSessionMessage(session, {
+      type: 'SET_CAPTION_DISPLAY',
+      payload: { fontSize: 'lg', fontWeight: 'semibold' }
+    });
+
+    expect(next.captionFontSize).toBe('lg');
+    expect(next.captionFontWeight).toBe('semibold');
   });
 
   it('collects captions immediately from any vtt segment', () => {

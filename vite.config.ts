@@ -13,6 +13,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         popup: resolve(rootDir, 'popup.html'),
+        sidepanel: resolve(rootDir, 'sidepanel.html'),
         background: resolve(rootDir, 'src/background.ts'),
         content: resolve(rootDir, 'src/content.ts'),
         page: resolve(rootDir, 'src/page-script.ts')
@@ -22,9 +23,13 @@ export default defineConfig({
           if (chunkInfo.name === 'background') return 'background.js';
           if (chunkInfo.name === 'content') return 'content.js';
           if (chunkInfo.name === 'page') return 'page-script.js';
+          if (chunkInfo.name === 'main') return 'assets/main.js';
           return 'assets/[name]-[hash].js';
         },
-        assetFileNames: 'assets/[name]-[hash][extname]'
+        assetFileNames: (assetInfo) => {
+          if (assetInfo.name === 'style.css' || assetInfo.name === 'main.css') return 'assets/main.css';
+          return 'assets/[name]-[hash][extname]';
+        }
       }
     }
   },

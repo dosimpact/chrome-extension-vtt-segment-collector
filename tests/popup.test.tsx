@@ -13,6 +13,10 @@ const baseState: PopupState = {
     pageTitle: 'Example video',
     autoDetect: false,
     autoSaveLibrary: true,
+    domExtractionEnabled: true,
+    vttResponseAnalysisEnabled: true,
+    captionFontSize: 'sm',
+    captionFontWeight: 'normal',
     detectionEnabled: false,
     hydratedLibraryUrl: 'https://example.com/watch/1',
     status: 'idle',
@@ -45,23 +49,35 @@ const baseState: PopupState = {
   ]
 };
 
+function renderPopupApp(overrides: Partial<React.ComponentProps<typeof PopupApp>> = {}) {
+  return render(
+    <PopupApp
+      state={baseState}
+      isSidePanel={false}
+      canOpenSidePanel={true}
+      onStart={vi.fn()}
+      onStop={vi.fn()}
+      onOpenSidePanel={vi.fn()}
+      onToggleAutoDetect={vi.fn()}
+      onToggleDomExtraction={vi.fn()}
+      onToggleVttResponseAnalysis={vi.fn()}
+      onSetCaptionDisplay={vi.fn()}
+      onClearCaptions={vi.fn()}
+      onCopyAll={vi.fn()}
+      onDownload={vi.fn()}
+      onDownloadLibrary={vi.fn()}
+      onDownloadAllLibrary={vi.fn()}
+      onDeleteLibraryEntry={vi.fn()}
+      onToggleAutoSaveLibrary={vi.fn()}
+      onRefresh={vi.fn()}
+      {...overrides}
+    />
+  );
+}
+
 describe('PopupApp', () => {
   it('renders accumulated subtitles and action buttons', () => {
-    render(
-      <PopupApp
-        state={baseState}
-        onStart={vi.fn()}
-        onStop={vi.fn()}
-        onToggleAutoDetect={vi.fn()}
-        onClearCaptions={vi.fn()}
-        onCopyAll={vi.fn()}
-        onDownload={vi.fn()}
-        onDownloadLibrary={vi.fn()}
-        onDeleteLibraryEntry={vi.fn()}
-        onToggleAutoSaveLibrary={vi.fn()}
-        onRefresh={vi.fn()}
-      />
-    );
+    renderPopupApp();
 
     expect(screen.getByText('hello')).toBeInTheDocument();
     expect(screen.getByText('00:00:01')).toBeInTheDocument();
@@ -69,51 +85,24 @@ describe('PopupApp', () => {
     expect(screen.getByRole('button', { name: 'Clear Captions' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Copy All Captions' })).toBeInTheDocument();
     expect(screen.getByText('Live Buffer')).toBeInTheDocument();
-    expect(screen.getByRole('switch', { name: 'Auto detect subtitles' })).toBeInTheDocument();
-    expect(screen.queryByText('VTT Collector')).not.toBeInTheDocument();
-    expect(screen.queryByText(/Capture subtitle prefetches early/i)).not.toBeInTheDocument();
+    expect(screen.getByText('Transcript Queue')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Auto detect subtitles/i })).toBeInTheDocument();
+    expect(screen.getByText('Security Checker')).toBeInTheDocument();
+    expect(screen.queryByText(/Current page:/i)).not.toBeInTheDocument();
   });
 
   it('calls clear handler for the selected track', async () => {
     const user = userEvent.setup();
     const onClearCaptions = vi.fn();
 
-    render(
-      <PopupApp
-        state={baseState}
-        onStart={vi.fn()}
-        onStop={vi.fn()}
-        onToggleAutoDetect={vi.fn()}
-        onClearCaptions={onClearCaptions}
-        onCopyAll={vi.fn()}
-        onDownload={vi.fn()}
-        onDownloadLibrary={vi.fn()}
-        onDeleteLibraryEntry={vi.fn()}
-        onToggleAutoSaveLibrary={vi.fn()}
-        onRefresh={vi.fn()}
-      />
-    );
+    renderPopupApp({ onClearCaptions });
 
     await user.click(screen.getByRole('button', { name: 'Clear Captions' }));
     expect(onClearCaptions).toHaveBeenCalled();
   });
 
   it('shows a manual refresh affordance for stale popup state', () => {
-    render(
-      <PopupApp
-        state={baseState}
-        onStart={vi.fn()}
-        onStop={vi.fn()}
-        onToggleAutoDetect={vi.fn()}
-        onClearCaptions={vi.fn()}
-        onCopyAll={vi.fn()}
-        onDownload={vi.fn()}
-        onDownloadLibrary={vi.fn()}
-        onDeleteLibraryEntry={vi.fn()}
-        onToggleAutoSaveLibrary={vi.fn()}
-        onRefresh={vi.fn()}
-      />
-    );
+    renderPopupApp();
 
     expect(screen.getByRole('button', { name: 'Refresh' })).toBeInTheDocument();
   });
@@ -122,21 +111,7 @@ describe('PopupApp', () => {
     const user = userEvent.setup();
     const onCopyAll = vi.fn();
 
-    render(
-      <PopupApp
-        state={baseState}
-        onStart={vi.fn()}
-        onStop={vi.fn()}
-        onToggleAutoDetect={vi.fn()}
-        onClearCaptions={vi.fn()}
-        onCopyAll={onCopyAll}
-        onDownload={vi.fn()}
-        onDownloadLibrary={vi.fn()}
-        onDeleteLibraryEntry={vi.fn()}
-        onToggleAutoSaveLibrary={vi.fn()}
-        onRefresh={vi.fn()}
-      />
-    );
+    renderPopupApp({ onCopyAll });
 
     await user.click(screen.getByRole('button', { name: 'Copy All Captions' }));
     expect(onCopyAll).toHaveBeenCalled();
@@ -145,23 +120,9 @@ describe('PopupApp', () => {
   it('shows saved captions by url in the library tab', async () => {
     const user = userEvent.setup();
 
-    render(
-      <PopupApp
-        state={baseState}
-        onStart={vi.fn()}
-        onStop={vi.fn()}
-        onToggleAutoDetect={vi.fn()}
-        onClearCaptions={vi.fn()}
-        onCopyAll={vi.fn()}
-        onDownload={vi.fn()}
-        onDownloadLibrary={vi.fn()}
-        onDeleteLibraryEntry={vi.fn()}
-        onToggleAutoSaveLibrary={vi.fn()}
-        onRefresh={vi.fn()}
-      />
-    );
+    renderPopupApp();
 
-    await user.click(screen.getByRole('button', { name: 'Library Tab' }));
+    await user.click(screen.getByRole('tab', { name: 'Library Tab' }));
 
     expect(screen.getByText('Example video')).toBeInTheDocument();
     expect(screen.getByText('https://example.com/watch/1')).toBeInTheDocument();
@@ -171,24 +132,65 @@ describe('PopupApp', () => {
   it('shows auto save setting in the settings tab', async () => {
     const user = userEvent.setup();
 
-    render(
-      <PopupApp
-        state={baseState}
-        onStart={vi.fn()}
-        onStop={vi.fn()}
-        onToggleAutoDetect={vi.fn()}
-        onClearCaptions={vi.fn()}
-        onCopyAll={vi.fn()}
-        onDownload={vi.fn()}
-        onDownloadLibrary={vi.fn()}
-        onDeleteLibraryEntry={vi.fn()}
-        onToggleAutoSaveLibrary={vi.fn()}
-        onRefresh={vi.fn()}
-      />
-    );
+    renderPopupApp();
 
-    await user.click(screen.getByRole('button', { name: 'Settings Tab' }));
+    await user.click(screen.getByRole('tab', { name: 'Settings Tab' }));
 
     expect(screen.getByRole('switch', { name: 'Auto save captions by URL' })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'DOM caption extraction' })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'VTT response analysis' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Caption font size' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Caption font weight' })).toBeInTheDocument();
+  });
+
+  it('calls collection mode setting handlers', async () => {
+    const user = userEvent.setup();
+    const onToggleDomExtraction = vi.fn();
+    const onToggleVttResponseAnalysis = vi.fn();
+
+    renderPopupApp({ onToggleDomExtraction, onToggleVttResponseAnalysis });
+
+    await user.click(screen.getByRole('tab', { name: 'Settings Tab' }));
+    await user.click(screen.getByRole('switch', { name: 'DOM caption extraction' }));
+    await user.click(screen.getByRole('switch', { name: 'VTT response analysis' }));
+
+    expect(onToggleDomExtraction).toHaveBeenCalledWith(false);
+    expect(onToggleVttResponseAnalysis).toHaveBeenCalledWith(false);
+  });
+
+  it('calls caption display setting handler', async () => {
+    const user = userEvent.setup();
+    const onSetCaptionDisplay = vi.fn();
+
+    renderPopupApp({ onSetCaptionDisplay });
+
+    await user.click(screen.getByRole('tab', { name: 'Settings Tab' }));
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Caption font size' }), 'lg');
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Caption font weight' }), 'semibold');
+
+    expect(onSetCaptionDisplay).toHaveBeenCalledWith({ fontSize: 'lg' });
+    expect(onSetCaptionDisplay).toHaveBeenCalledWith({ fontWeight: 'semibold' });
+  });
+
+  it('shows a side panel affordance and calls its handler', async () => {
+    const user = userEvent.setup();
+    const onOpenSidePanel = vi.fn();
+
+    renderPopupApp({ onOpenSidePanel });
+
+    await user.click(screen.getByRole('button', { name: 'Open Side Panel' }));
+    expect(onOpenSidePanel).toHaveBeenCalled();
+  });
+
+  it('calls the library bulk download handler', async () => {
+    const user = userEvent.setup();
+    const onDownloadAllLibrary = vi.fn();
+
+    renderPopupApp({ onDownloadAllLibrary });
+
+    await user.click(screen.getByRole('tab', { name: 'Library Tab' }));
+    await user.click(screen.getByRole('button', { name: 'Download All Saved VTT' }));
+
+    expect(onDownloadAllLibrary).toHaveBeenCalledWith('vtt');
   });
 });

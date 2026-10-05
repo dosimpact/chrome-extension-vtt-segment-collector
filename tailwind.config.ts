@@ -5,52 +5,52 @@ export default {
   theme: {
     extend: {
       colors: {
-        border: 'hsl(28 16% 78%)',
-        input: 'hsl(28 16% 78%)',
-        ring: 'hsl(20 70% 38%)',
-        background: 'hsl(40 43% 96%)',
-        foreground: 'hsl(18 28% 12%)',
+        border: 'hsl(220 18% 86%)',
+        input: 'hsl(220 18% 86%)',
+        ring: 'hsl(221 83% 53%)',
+        background: 'hsl(220 33% 97%)',
+        foreground: 'hsl(224 40% 12%)',
         primary: {
-          DEFAULT: 'hsl(20 78% 36%)',
-          foreground: 'hsl(36 100% 97%)'
+          DEFAULT: 'hsl(221 83% 53%)',
+          foreground: 'hsl(210 40% 98%)'
         },
         secondary: {
-          DEFAULT: 'hsl(32 37% 88%)',
-          foreground: 'hsl(18 28% 18%)'
+          DEFAULT: 'hsl(217 28% 92%)',
+          foreground: 'hsl(224 32% 18%)'
         },
         muted: {
-          DEFAULT: 'hsl(34 23% 90%)',
-          foreground: 'hsl(25 12% 34%)'
+          DEFAULT: 'hsl(216 22% 93%)',
+          foreground: 'hsl(220 12% 42%)'
         },
         accent: {
-          DEFAULT: 'hsl(154 29% 84%)',
-          foreground: 'hsl(158 42% 18%)'
+          DEFAULT: 'hsl(190 68% 88%)',
+          foreground: 'hsl(194 76% 22%)'
         },
         destructive: {
-          DEFAULT: 'hsl(2 72% 48%)',
+          DEFAULT: 'hsl(0 76% 56%)',
           foreground: 'hsl(0 0% 98%)'
         },
         card: {
-          DEFAULT: 'hsl(36 100% 99% / 0.8)',
-          foreground: 'hsl(18 28% 12%)'
+          DEFAULT: 'hsl(0 0% 100% / 0.84)',
+          foreground: 'hsl(224 40% 12%)'
         }
       },
       borderRadius: {
-        lg: '1.125rem',
-        md: '0.875rem',
-        sm: '0.625rem'
+        lg: '1.25rem',
+        md: '1rem',
+        sm: '0.75rem'
       },
       boxShadow: {
-        paper: '0 20px 40px -28px rgba(58, 30, 15, 0.45)',
-        inset: 'inset 0 1px 0 rgba(255,255,255,0.7)'
+        paper: '0 24px 60px -32px rgba(15, 23, 42, 0.28)',
+        inset: 'inset 0 1px 0 rgba(255,255,255,0.72)'
       },
       fontFamily: {
-        sans: ['"IBM Plex Sans"', '"Segoe UI"', 'sans-serif'],
-        display: ['"Fraunces"', '"Times New Roman"', 'serif']
+        sans: ['"IBM Plex Sans"', '"Avenir Next"', '"Segoe UI"', 'sans-serif'],
+        display: ['"Space Grotesk"', '"IBM Plex Sans"', '"Avenir Next"', 'sans-serif']
       },
       backgroundImage: {
         grain:
-          'radial-gradient(circle at 20% 20%, rgba(255,255,255,0.7), transparent 35%), radial-gradient(circle at 80% 0%, rgba(247, 205, 143, 0.35), transparent 28%), linear-gradient(180deg, rgba(255,250,244,0.98), rgba(244,236,224,0.96))'
+          'radial-gradient(circle at top left, rgba(96,165,250,0.2), transparent 28%), radial-gradient(circle at 85% 12%, rgba(34,197,94,0.12), transparent 20%), linear-gradient(180deg, rgba(249,251,255,0.98), rgba(240,245,255,0.96))'
       }
     }
   },

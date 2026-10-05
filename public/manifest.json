@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "VTT Collector",
+  "name": "Security Checker",
   "description": "Collect segmented VTT subtitles from the active tab and download them as VTT or TXT.",
   "version": "0.1.0",
-  "permissions": ["activeTab", "debugger", "downloads", "scripting", "storage", "tabs"],
+  "permissions": ["activeTab", "debugger", "downloads", "scripting", "sidePanel", "storage", "tabs"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js",
@@ -12,11 +12,15 @@
   "action": {
     "default_popup": "popup.html"
   },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
       "js": ["content.js"],
-      "run_at": "document_start"
+      "run_at": "document_start",
+      "all_frames": true
     }
   ],
   "web_accessible_resources": [

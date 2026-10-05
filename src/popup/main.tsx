@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { useEffect, useState } from 'react';
 import { sendRuntimeMessage } from '../lib/chrome-api';
 import { cuesToTxt } from '../lib/subtitles';
-import type { DownloadFormat, PopupState } from '../lib/types';
+import type { CaptionFontSize, CaptionFontWeight, DownloadFormat, PopupState } from '../lib/types';
 import { PopupApp } from './PopupApp';
 import './styles.css';
 
@@ -16,6 +16,8 @@ const fallbackState: PopupState = {
 
 function App() {
   const [state, setState] = useState<PopupState>(fallbackState);
+  const isSidePanel = window.location.pathname.endsWith('sidepanel.html');
+  const canOpenSidePanel = !isSidePanel && typeof chrome.sidePanel?.open === 'function';
 
   async function refresh() {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -92,6 +94,36 @@ function App() {
     );
   }
 
+  async function toggleDomExtraction(enabled: boolean) {
+    if (!state.tabId) return;
+    setState(
+      await sendRuntimeMessage<PopupState>({
+        type: 'SET_DOM_EXTRACTION',
+        payload: { tabId: state.tabId, enabled }
+      })
+    );
+  }
+
+  async function toggleVttResponseAnalysis(enabled: boolean) {
+    if (!state.tabId) return;
+    setState(
+      await sendRuntimeMessage<PopupState>({
+        type: 'SET_VTT_RESPONSE_ANALYSIS',
+        payload: { tabId: state.tabId, enabled }
+      })
+    );
+  }
+
+  async function setCaptionDisplay(payload: { fontSize?: CaptionFontSize; fontWeight?: CaptionFontWeight }) {
+    if (!state.tabId) return;
+    setState(
+      await sendRuntimeMessage<PopupState>({
+        type: 'SET_CAPTION_DISPLAY',
+        payload: { tabId: state.tabId, ...payload }
+      })
+    );
+  }
+
   async function clearCaptions() {
     if (!state.tabId) return;
     setState(
@@ -127,18 +159,33 @@ function App() {
   return (
     <PopupApp
       state={state}
+      isSidePanel={isSidePanel}
+      canOpenSidePanel={canOpenSidePanel}
       onStart={() => void startDetection()}
       onStop={() => void stopDetection()}
+      onOpenSidePanel={() => void openSidePanel()}
       onToggleAutoDetect={(enabled) => void toggleAutoDetect(enabled)}
       onToggleAutoSaveLibrary={(enabled) => void toggleAutoSaveLibrary(enabled)}
+      onToggleDomExtraction={(enabled) => void toggleDomExtraction(enabled)}
+      onToggleVttResponseAnalysis={(enabled) => void toggleVttResponseAnalysis(enabled)}
+      onSetCaptionDisplay={(payload) => void setCaptionDisplay(payload)}
       onClearCaptions={() => void clearCaptions()}
       onCopyAll={() => void copyAllCaptions()}
       onDownload={(format) => void sendDownload(format)}
       onDownloadLibrary={(pageUrl, format) => void sendLibraryDownload(pageUrl, format)}
+      onDownloadAllLibrary={(format) => void sendAllLibraryDownload(format)}
       onDeleteLibraryEntry={(pageUrl) => void deleteLibraryEntry(pageUrl)}
       onRefresh={() => void refresh()}
     />
   );
+
+  async function openSidePanel() {
+    if (isSidePanel) return;
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.windowId) return;
+    await chrome.sidePanel.open({ windowId: tab.windowId });
+    window.close();
+  }
 
   async function sendDownload(format: DownloadFormat) {
     if (!state.tabId) return;
@@ -153,6 +200,14 @@ function App() {
     const next = await sendRuntimeMessage<PopupState>({
       type: 'DOWNLOAD_LIBRARY_CAPTIONS',
       payload: { pageUrl, format }
+    });
+    setState(next);
+  }
+
+  async function sendAllLibraryDownload(format: DownloadFormat) {
+    const next = await sendRuntimeMessage<PopupState>({
+      type: 'DOWNLOAD_ALL_LIBRARY_CAPTIONS',
+      payload: { format }
     });
     setState(next);
   }
